@@ -3,6 +3,7 @@ import os
 import random
 import sys
 from array import array
+import colorsys
 
 import pygame
 
@@ -337,6 +338,41 @@ def shift_wrap_enabled():
     mods = pygame.key.get_mods()
     return bool(mods & pygame.KMOD_SHIFT)
 
+def get_rainbow_color(position, total_length):
+    """
+    Calcola il colore del corpo dello snake basato sulla posizione nel corpo.
+    Crea un gradiente arcobaleno da rosso (posizione 1) a viola (fine corpo).
+    
+    Args:
+        position: posizione del segmento nel corpo (0 = testa, 1+ = corpo)
+        total_length: lunghezza totale dello snake
+    
+    Returns:
+        tupla RGB (r, g, b)
+    """
+    if position == 0:
+        # La testa mantiene il suo colore
+        return HEAD_COLOR
+    
+    # Calcola la proporzione della posizione nel corpo (0 a 1)
+    # Escludiamo la testa (position 0) dal calcolo
+    if total_length <= 1:
+        proportion = 0
+    else:
+        proportion = (position - 1) / (total_length - 1)
+    
+    # Converte la proporzione in un valore di hue (0 = rosso, 1 = rosso di nuovo)
+    # Usiamo solo 0.83 invece di 1.0 per evitare il rosso finale e fermarsi al viola
+    hue = 0 + (0.83 * proportion)  # Da 0 (rosso) a 0.83 (viola)
+    saturation = 0.8  # Intensità del colore
+    value = 1.0  # Brightness
+    
+    # Converti da HSV a RGB
+    r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    
+    # Converti da float (0-1) a int (0-255)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
 def main():
     # Stato iniziale del serpente (x, y)
     snake = [
@@ -427,7 +463,7 @@ def main():
 
         # Disegna serpente
         for i, segment in enumerate(snake):
-            color = HEAD_COLOR if i == 0 else BODY_COLOR
+            color = get_rainbow_color(i, len(snake))
             pygame.draw.rect(screen, color,
                            (segment[0] * CELL_SIZE, segment[1] * CELL_SIZE,
                             CELL_SIZE, CELL_SIZE))
