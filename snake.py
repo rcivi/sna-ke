@@ -5,6 +5,7 @@ import sys
 
 # Inizializza pygame
 pygame.init()
+pygame.mixer.init()
 
 # Dimensioni celle in pixel
 CELL_SIZE = 20
@@ -37,6 +38,50 @@ pygame.display.set_caption('Snake Game')
 # Clock per controllare FPS
 clock = pygame.time.Clock()
 
+# Genera suoni procedurali usando numpy
+def generate_eat_sound():
+    import numpy as np
+    sample_rate = 22050
+    duration = 0.1
+    frequency = 800
+    t = np.linspace(0, duration, int(sample_rate * duration))
+    wave = np.sin(2 * np.pi * frequency * t) * 0.3
+    wave = (wave * 32767).astype(np.int16)
+    stereo_wave = np.column_stack((wave, wave))
+    return pygame.sndarray.make_sound(stereo_wave)
+
+def generate_crash_sound():
+    import numpy as np
+    sample_rate = 22050
+    duration = 0.3
+    t = np.linspace(0, duration, int(sample_rate * duration))
+    wave = np.random.uniform(-0.5, 0.5, len(t)) * np.exp(-10 * t)
+    wave = (wave * 32767).astype(np.int16)
+    stereo_wave = np.column_stack((wave, wave))
+    return pygame.sndarray.make_sound(stereo_wave)
+
+def generate_move_sound():
+    import numpy as np
+    sample_rate = 22050
+    duration = 0.05
+    frequency = 200
+    t = np.linspace(0, duration, int(sample_rate * duration))
+    wave = np.sin(2 * np.pi * frequency * t) * 0.1 * (1 - t / duration)
+    wave = (wave * 32767).astype(np.int16)
+    stereo_wave = np.column_stack((wave, wave))
+    return pygame.sndarray.make_sound(stereo_wave)
+
+# Crea suoni
+try:
+    eat_sound = generate_eat_sound()
+    crash_sound = generate_crash_sound()
+    move_sound = generate_move_sound()
+except Exception as e:
+    print(f"Errore nella generazione dei suoni: {e}")
+    # Crea suoni vuoti come fallback
+    empty = pygame.mixer.Sound(buffer=bytearray(100))
+    eat_sound = crash_sound = move_sound = empty
+
 def generate_food(snake):
     while True:
         food = [random.randint(0, config.GRID_WIDTH - 1),
@@ -67,12 +112,16 @@ def main():
             if event.type == pygame.KEYDOWN and not game_over:
                 if event.key == pygame.K_UP and direction != [0, 1]:
                     direction = [0, -1]
+                    move_sound.play()
                 elif event.key == pygame.K_DOWN and direction != [0, -1]:
                     direction = [0, 1]
+                    move_sound.play()
                 elif event.key == pygame.K_LEFT and direction != [1, 0]:
                     direction = [-1, 0]
+                    move_sound.play()
                 elif event.key == pygame.K_RIGHT and direction != [-1, 0]:
                     direction = [1, 0]
+                    move_sound.play()
                 elif event.key == pygame.K_q:
                     running = False
 
@@ -87,12 +136,14 @@ def main():
             if (new_head[0] < 0 or new_head[0] >= config.GRID_WIDTH or
                 new_head[1] < 0 or new_head[1] >= config.GRID_HEIGHT or
                 new_head in snake):
+                crash_sound.play()
                 game_over = True
             else:
                 snake.insert(0, new_head)
 
                 # Controllo se ha mangiato
                 if new_head == food:
+                    eat_sound.play()
                     food = generate_food(snake)
                     score += 10
                 else:
