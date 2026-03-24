@@ -15,24 +15,11 @@ pygame.init()
 # Dimensioni celle in pixel
 CELL_SIZE = 20
 
-# Colori (RGB)
-color_map = {
-    'BLACK': (0, 0, 0),
-    'BLUE': (0, 0, 255),
-    'CYAN': (0, 255, 255),
-    'GREEN': (0, 255, 0),
-    'MAGENTA': (255, 0, 255),
-    'RED': (255, 0, 0),
-    'WHITE': (255, 255, 255),
-    'YELLOW': (255, 255, 0),
-    'PINK': (255, 105, 180)
-}
-
-# Configura colori dal config
-BG_COLOR = color_map.get(config.COLOR_BACKGROUND, (0, 0, 0))
-HEAD_COLOR = color_map.get(config.COLOR_SNAKE_HEAD, (255, 255, 255))
-BODY_COLOR = color_map.get(config.COLOR_SNAKE_BODY, (255, 0, 255))
-FOOD_COLOR = color_map.get(config.COLOR_FOOD, (255, 0, 0))
+BG_COLOR = config.BACKGROUND_COLOR
+HEAD_COLOR = config.SNAKE_HEAD_COLOR
+BODY_COLOR = config.SNAKE_BODY_COLOR
+FOOD_COLOR = config.FOOD_COLOR
+TEXT_COLOR = config.TEXT_COLOR
 
 # Crea finestra
 WIDTH = config.GRID_WIDTH * CELL_SIZE
@@ -44,14 +31,17 @@ pygame.display.set_caption('Snake Game')
 clock = pygame.time.Clock()
 
 SAMPLE_RATE = 22050
-MUSIC_VOLUME = 0.16
-MOVE_VOLUME = 0.16
-EAT_VOLUME = 0.42
-CRASH_VOLUME = 0.6
+MUSIC_VOLUME = 0.13
+MOVE_VOLUME = 0.12
+EAT_VOLUME = 0.32
+CRASH_VOLUME = 0.4
+WRAP_VOLUME = 0.24
 
 MOVE_SOUND_PATH = os.path.join(os.path.dirname(__file__), "sounds", "move.wav")
 EAT_SOUND_PATH = os.path.join(os.path.dirname(__file__), "sounds", "eat.wav")
 CRASH_SOUND_PATH = os.path.join(os.path.dirname(__file__), "sounds", "crash.wav")
+WRAP_FLASH_COLOR = config.COLOR_WRAP_FLASH
+WRAP_FLASH_DURATION = 6
 
 
 class SilentSound:
@@ -93,18 +83,19 @@ def mix_voices(voices):
     return mixed / max(1, len(voices))
 
 
-def generate_tone_sound(duration, base_frequency, volume, sweep=0, wobble=0, overtone=0.0):
+def generate_tone_sound(duration, base_frequency, volume, sweep=0, wobble=0, overtone=0.0, warmth=0.0):
     total_samples = max(1, int(SAMPLE_RATE * duration))
     samples = []
 
     for index in range(total_samples):
         progress = index / total_samples
         frequency = base_frequency + (sweep * progress) + wobble * math.sin(2 * math.pi * 10 * progress)
-        amplitude = volume * ((1 - progress) ** 1.4)
+        amplitude = volume * ((1 - progress) ** 2.1)
         fundamental = math.sin(2 * math.pi * frequency * index / SAMPLE_RATE)
         upper = overtone * math.sin(2 * math.pi * frequency * 2 * index / SAMPLE_RATE)
-        texture = 0.08 * math.sin(2 * math.pi * (frequency * 0.5) * index / SAMPLE_RATE)
-        voice = mix_voices((fundamental, upper, texture))
+        lower = warmth * math.sin(2 * math.pi * (frequency * 0.5) * index / SAMPLE_RATE)
+        texture = 0.04 * math.sin(2 * math.pi * (frequency * 0.25) * index / SAMPLE_RATE)
+        voice = mix_voices((fundamental, upper, lower, texture))
         samples.append(clamp_sample(32767 * amplitude * voice))
 
     return build_stereo_sound(samples)
@@ -116,11 +107,47 @@ def generate_crash_sound(duration, volume):
 
     for index in range(total_samples):
         progress = index / total_samples
-        envelope = (1 - progress) ** 2
-        noise = random.uniform(-1.0, 1.0)
-        low_tone = math.sin(2 * math.pi * 70 * index / SAMPLE_RATE)
-        metallic = math.sin(2 * math.pi * 180 * index / SAMPLE_RATE)
-        voice = 0.6 * noise + 0.25 * low_tone + 0.15 * metallic
+        envelope = (1 - progress) ** 2.6
+        noise = random.uniform(-0.6, 0.6)
+        low_tone = math.sin(2 * math.pi * 65 * index / SAMPLE_RATE)
+        soft_tail = math.sin(2 * math.pi * 110 * index / SAMPLE_RATE)
+        voice = 0.38 * noise + 0.42 * low_tone + 0.2 * soft_tail
+        samples.append(clamp_sample(32767 * volume * envelope * voice))
+
+    return build_stereo_sound(samples)
+
+
+def generate_pluck_sound(duration, base_frequency, volume, sparkle=0.0):
+    total_samples = max(1, int(SAMPLE_RATE * duration))
+    samples = []
+
+    for index in range(total_samples):
+        progress = index / total_samples
+        current_time = index / SAMPLE_RATE
+        envelope = ((1 - progress) ** 2.3) * (0.85 + 0.15 * math.sin(math.pi * progress))
+        body = math.sin(2 * math.pi * base_frequency * current_time)
+        octave = 0.22 * math.sin(2 * math.pi * base_frequency * 2 * current_time)
+        sub = 0.18 * math.sin(2 * math.pi * (base_frequency / 2) * current_time)
+        chime = sparkle * math.sin(2 * math.pi * (base_frequency * 3) * current_time)
+        voice = mix_voices((body, octave, sub, chime))
+        samples.append(clamp_sample(32767 * volume * envelope * voice))
+
+    return build_stereo_sound(samples)
+
+
+def generate_wrap_sound(duration, start_frequency, end_frequency, volume):
+    total_samples = max(1, int(SAMPLE_RATE * duration))
+    samples = []
+
+    for index in range(total_samples):
+        progress = index / total_samples
+        current_time = index / SAMPLE_RATE
+        frequency = start_frequency + ((end_frequency - start_frequency) * progress)
+        envelope = (1 - progress) ** 1.7
+        body = math.sin(2 * math.pi * frequency * current_time)
+        airy = 0.22 * math.sin(2 * math.pi * (frequency * 1.5) * current_time)
+        tail = 0.15 * math.sin(2 * math.pi * (frequency * 0.5) * current_time)
+        voice = mix_voices((body, airy, tail))
         samples.append(clamp_sample(32767 * volume * envelope * voice))
 
     return build_stereo_sound(samples)
@@ -156,16 +183,16 @@ def note_frequency(note):
 
 
 def generate_music_loop():
-    step_duration = 0.18
+    step_duration = 0.19
     lead_sequence = [
-        "E4", "G4", "A4", "B4", "A4", "G4", "E4", "D4",
-        "C4", "E4", "G4", "A4", "G4", "E4", "D4", "B3",
-        "E4", "G4", "A4", "B4", "D5", "B4", "A4", "G4",
-        "E4", "D4", "C4", "D4", "E4", "G4", "D4", "R",
+        "E4", "G4", "A4", "C5", "B4", "A4", "G4", "E4",
+        "D4", "E4", "G4", "A4", "G4", "E4", "D4", "B3",
+        "C4", "E4", "G4", "B4", "A4", "G4", "E4", "D4",
+        "E4", "G4", "A4", "G4", "E4", "D4", "C4", "R",
     ]
     bass_sequence = [
-        "E2", "E2", "A2", "A2", "C3", "C3", "B2", "B2",
-        "C3", "C3", "G2", "G2", "A2", "A2", "B2", "B2",
+        "E2", "B2", "A2", "E2", "C3", "G2", "A2", "E2",
+        "D3", "A2", "G2", "D2", "C3", "G2", "A2", "B2",
     ]
 
     total_samples = int(len(lead_sequence) * step_duration * SAMPLE_RATE)
@@ -183,23 +210,26 @@ def generate_music_loop():
 
         lead_voice = 0.0
         if lead_frequency:
-            lead_env = 0.65 * ((1 - lead_progress) ** 1.8)
+            lead_env = 0.5 * ((1 - lead_progress) ** 1.9)
             lead_voice = lead_env * mix_voices((
                 math.sin(2 * math.pi * lead_frequency * current_time),
-                0.35 * math.sin(2 * math.pi * lead_frequency * 2 * current_time),
-                0.15 * math.sin(2 * math.pi * (lead_frequency / 2) * current_time),
+                0.24 * math.sin(2 * math.pi * lead_frequency * 2 * current_time),
+                0.12 * math.sin(2 * math.pi * lead_frequency * 3 * current_time),
+                0.16 * math.sin(2 * math.pi * (lead_frequency / 2) * current_time),
             ))
 
         bass_voice = 0.0
         if bass_frequency:
-            bass_env = 0.8 * ((1 - bass_progress) ** 1.2)
+            bass_env = 0.58 * ((1 - bass_progress) ** 1.3)
             bass_voice = bass_env * mix_voices((
                 math.sin(2 * math.pi * bass_frequency * current_time),
                 0.25 * math.sin(2 * math.pi * bass_frequency * 0.5 * current_time),
+                0.12 * math.sin(2 * math.pi * bass_frequency * 1.5 * current_time),
             ))
 
-        pulse = 0.06 if (lead_step % 4 == 0 and lead_progress < 0.12) else 0.0
-        voice = (0.52 * lead_voice) + (0.45 * bass_voice) + pulse
+        bounce = 0.018 if lead_progress < 0.08 and lead_step % 2 == 0 else 0.0
+        shimmer = 0.01 * math.sin(2 * math.pi * 4 * current_time)
+        voice = (0.54 * lead_voice) + (0.38 * bass_voice) + bounce + shimmer
         samples.append(clamp_sample(32767 * MUSIC_VOLUME * voice))
 
     return build_stereo_sound(samples)
@@ -228,20 +258,26 @@ def load_or_generate_sounds():
     return (
         load_sound(
             EAT_SOUND_PATH,
-            lambda: generate_tone_sound(duration=0.18, base_frequency=740, volume=0.46, sweep=420, wobble=35, overtone=0.22),
+            lambda: generate_pluck_sound(duration=0.2, base_frequency=660, volume=0.34, sparkle=0.14),
             EAT_VOLUME,
             prefer_file=False,
         ),
         load_sound(
             CRASH_SOUND_PATH,
-            lambda: generate_crash_sound(duration=0.48, volume=0.52),
+            lambda: generate_crash_sound(duration=0.42, volume=0.38),
             CRASH_VOLUME,
             prefer_file=False,
         ),
         load_sound(
             MOVE_SOUND_PATH,
-            lambda: generate_tone_sound(duration=0.06, base_frequency=220, volume=0.22, sweep=85, overtone=0.18),
+            lambda: generate_tone_sound(duration=0.07, base_frequency=210, volume=0.17, sweep=55, wobble=8, overtone=0.08, warmth=0.16),
             MOVE_VOLUME,
+            prefer_file=False,
+        ),
+        load_sound(
+            os.path.join(os.path.dirname(__file__), "sounds", "wrap.wav"),
+            lambda: generate_wrap_sound(duration=0.16, start_frequency=420, end_frequency=780, volume=0.24),
+            WRAP_VOLUME,
             prefer_file=False,
         ),
     )
@@ -249,13 +285,14 @@ def load_or_generate_sounds():
 AUDIO_ENABLED = init_audio()
 
 # Carica suoni
-eat_sound, crash_sound, move_sound = load_or_generate_sounds()
+eat_sound, crash_sound, move_sound, wrap_sound = load_or_generate_sounds()
 music_loop = generate_music_loop() if AUDIO_ENABLED else SilentSound()
 
 MOVE_CHANNEL = pygame.mixer.Channel(1) if AUDIO_ENABLED else None
 EAT_CHANNEL = pygame.mixer.Channel(2) if AUDIO_ENABLED else None
 CRASH_CHANNEL = pygame.mixer.Channel(3) if AUDIO_ENABLED else None
 MUSIC_CHANNEL = pygame.mixer.Channel(4) if AUDIO_ENABLED else None
+WRAP_CHANNEL = pygame.mixer.Channel(5) if AUDIO_ENABLED else None
 
 
 def play_music():
@@ -283,12 +320,22 @@ def play_crash_sound():
     if CRASH_CHANNEL is not None:
         CRASH_CHANNEL.play(crash_sound)
 
+
+def play_wrap_sound():
+    if WRAP_CHANNEL is not None:
+        WRAP_CHANNEL.play(wrap_sound)
+
 def generate_food(snake):
     while True:
         food = [random.randint(0, config.GRID_WIDTH - 1),
                 random.randint(0, config.GRID_HEIGHT - 1)]
         if food not in snake:
             return food
+
+
+def shift_wrap_enabled():
+    mods = pygame.key.get_mods()
+    return bool(mods & pygame.KMOD_SHIFT)
 
 def main():
     # Stato iniziale del serpente (x, y)
@@ -304,6 +351,7 @@ def main():
 
     running = True
     game_over = False
+    wrap_flash_frames = 0
     play_music()
 
     while running:
@@ -333,6 +381,16 @@ def main():
         if not game_over:
             # Calcola nuova posizione testa
             new_head = [snake[0][0] + direction[0], snake[0][1] + direction[1]]
+            hit_wall = (
+                new_head[0] < 0 or new_head[0] >= config.GRID_WIDTH or
+                new_head[1] < 0 or new_head[1] >= config.GRID_HEIGHT
+            )
+
+            if hit_wall and shift_wrap_enabled():
+                new_head[0] %= config.GRID_WIDTH
+                new_head[1] %= config.GRID_HEIGHT
+                wrap_flash_frames = WRAP_FLASH_DURATION
+                play_wrap_sound()
 
             # Controllo collisioni
             if (new_head[0] < 0 or new_head[0] >= config.GRID_WIDTH or
@@ -355,6 +413,13 @@ def main():
         # Disegna tutto
         screen.fill(BG_COLOR)
 
+        if wrap_flash_frames > 0:
+            flash_alpha = int(80 * (wrap_flash_frames / WRAP_FLASH_DURATION))
+            flash_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            flash_surface.fill((*WRAP_FLASH_COLOR, flash_alpha))
+            screen.blit(flash_surface, (0, 0))
+            wrap_flash_frames -= 1
+
         # Disegna cibo
         pygame.draw.rect(screen, FOOD_COLOR,
                         (food[0] * CELL_SIZE, food[1] * CELL_SIZE,
@@ -369,23 +434,23 @@ def main():
 
         # Disegna score
         font_score = pygame.font.Font(None, 36)
-        score_text = font_score.render(f'Score: {score}', True, (255, 255, 255))
+        score_text = font_score.render(f'Score: {score}', True, TEXT_COLOR)
         screen.blit(score_text, (10, 10))
 
         # Messaggio game over
         if game_over:
             font = pygame.font.Font(None, 48)
-            text = font.render('Game Over!', True, (255, 255, 255))
+            text = font.render('Game Over!', True, TEXT_COLOR)
             text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20))
             screen.blit(text, text_rect)
 
             font_score_final = pygame.font.Font(None, 36)
-            score_final_text = font_score_final.render(f'Score finale: {score}', True, (255, 255, 255))
+            score_final_text = font_score_final.render(f'Score finale: {score}', True, TEXT_COLOR)
             score_final_rect = score_final_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20))
             screen.blit(score_final_text, score_final_rect)
 
             font_small = pygame.font.Font(None, 24)
-            text_small = font_small.render('Premi un tasto per uscire', True, (255, 255, 255))
+            text_small = font_small.render('Premi un tasto per uscire', True, TEXT_COLOR)
             text_rect_small = text_small.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60))
             screen.blit(text_small, text_rect_small)
 
