@@ -54,6 +54,7 @@ def main():
     direction = [1, 0]  # Muove a destra
 
     food = generate_food(snake)
+    score = 0
 
     running = True
     game_over = False
@@ -93,6 +94,7 @@ def main():
                 # Controllo se ha mangiato
                 if new_head == food:
                     food = generate_food(snake)
+                    score += 10
                 else:
                     snake.pop()
 
@@ -111,16 +113,26 @@ def main():
                            (segment[0] * CELL_SIZE, segment[1] * CELL_SIZE,
                             CELL_SIZE, CELL_SIZE))
 
+        # Disegna score
+        font_score = pygame.font.Font(None, 36)
+        score_text = font_score.render(f'Score: {score}', True, (255, 255, 255))
+        screen.blit(score_text, (10, 10))
+
         # Messaggio game over
         if game_over:
             font = pygame.font.Font(None, 48)
             text = font.render('Game Over!', True, (255, 255, 255))
-            text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
+            text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20))
             screen.blit(text, text_rect)
+
+            font_score_final = pygame.font.Font(None, 36)
+            score_final_text = font_score_final.render(f'Score finale: {score}', True, (255, 255, 255))
+            score_final_rect = score_final_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20))
+            screen.blit(score_final_text, score_final_rect)
 
             font_small = pygame.font.Font(None, 24)
             text_small = font_small.render('Premi un tasto per uscire', True, (255, 255, 255))
-            text_rect_small = text_small.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 40))
+            text_rect_small = text_small.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60))
             screen.blit(text_small, text_rect_small)
 
         pygame.display.flip()
