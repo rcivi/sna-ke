@@ -1,23 +1,28 @@
 # Configurazione per il gioco Snake
 
 # Dimensioni della griglia (numero di celle)
-# In terminale, meglio stare in range piccoli se possibile, ma usiamo gli stessi valori
 GRID_WIDTH = 40
 GRID_HEIGHT = 20
 
-# Caratteri per il serpente e cibo
-CHAR_SNAKE_HEAD = '@'
-CHAR_SNAKE_BODY = 'o'
-CHAR_FOOD = '*'
-CHAR_EMPTY = ' '
+# Colori (RGB)
+COLOR_BLACK = (0, 0, 0)
+COLOR_BLUE = (0, 0, 255)
+COLOR_CYAN = (0, 255, 255)
+COLOR_GREEN = (0, 255, 0)
+COLOR_MAGENTA = (255, 0, 255)
+COLOR_RED = (255, 0, 0)
+COLOR_WHITE = (255, 255, 255)
+COLOR_YELLOW = (255, 255, 0)
+COLOR_PINK = (255, 105, 180)
+COLOR_WRAP_FLASH = (170, 255, 220)
 
-# Colori per curses (nomi dei colori)
-COLOR_BACKGROUND = 'GREEN'
-COLOR_SNAKE_HEAD = 'WHITE'
-COLOR_SNAKE_BODY = 'MAGENTA' # Curses non ha il rosa standard, usiamo magenta
-COLOR_FOOD = 'RED'
+# Colori del gioco
+BACKGROUND_COLOR = COLOR_GREEN
+SNAKE_HEAD_COLOR = COLOR_WHITE
+SNAKE_BODY_COLOR = COLOR_MAGENTA
+FOOD_COLOR = COLOR_RED
+TEXT_COLOR = COLOR_WHITE
 
 # Velocità del gioco (frame per secondo)
-# Per curses, il tempo è espresso in millisecondi di delay (1000/FPS)
 FPS = 10
 DELAY = int(1000 / FPS)
