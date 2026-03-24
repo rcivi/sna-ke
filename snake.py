@@ -1,17 +1,227 @@
-import math
-import os
-import random
+"""Snake Game with Rainbow Gradient and Synthesized Audio.
+
+Un gioco Snake classico con effetto gradiente arcobaleno dinamico e audio sintetizzato.
+"""
+
 import sys
-from array import array
+import random
 import colorsys
 
 import pygame
 
 import config
+from audio import SoundManager
 
-# Inizializza pygame con impostazioni audio prevedibili
+# === CONFIGURAZIONE PYGAME ===
 pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=512)
 pygame.init()
+
+# === COSTANTI DISPLAY ===
+CELL_SIZE = 20
+WIDTH = config.GRID_WIDTH * CELL_SIZE
+HEIGHT = config.GRID_HEIGHT * CELL_SIZE
+FPS = config.FPS
+
+# === COLORI ===
+BG_COLOR = config.BACKGROUND_COLOR
+HEAD_COLOR = config.SNAKE_HEAD_COLOR
+FOOD_COLOR = config.FOOD_COLOR
+TEXT_COLOR = config.TEXT_COLOR
+WRAP_FLASH_COLOR = config.COLOR_WRAP_FLASH
+
+# === COSTANTI GAME ===
+WRAP_FLASH_DURATION = 6
+FOOD_SCORE = 10
+
+# === SETUP DISPLAY ===
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption('Snake Game')
+clock = pygame.time.Clock()
+
+# === AUDIO ===
+sound_manager = SoundManager()
+
+
+def get_rainbow_color(position, total_length):
+    """Calcola colore arcobaleno basato sulla posizione nel corpo."""
+    if position == 0:
+        return HEAD_COLOR
+    
+    if total_length <= 1:
+        proportion = 0
+    else:
+        proportion = (position - 1) / (total_length - 1)
+    
+    hue = 0.83 * proportion  # 0 (rosso) → 0.83 (viola)
+    saturation, value = 0.8, 1.0
+    
+    r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+    return (int(r * 255), int(g * 255), int(b * 255))
+
+
+def generate_food(snake):
+    """Genera cibo in posizione casuale non occupata."""
+    while True:
+        food = [random.randint(0, config.GRID_WIDTH - 1),
+                random.randint(0, config.GRID_HEIGHT - 1)]
+        if food not in snake:
+            return food
+
+
+def handle_movement(event, direction, game_over):
+    """Gestisce input da tastiera."""
+    if event.type == pygame.QUIT:
+        return None, direction
+    
+    if event.type == pygame.KEYDOWN and not game_over:
+        key_map = {
+            pygame.K_UP: ([0, -1], [0, 1]),
+            pygame.K_DOWN: ([0, 1], [0, -1]),
+            pygame.K_LEFT: ([-1, 0], [1, 0]),
+            pygame.K_RIGHT: ([1, 0], [-1, 0]),
+        }
+        
+        if event.key in key_map:
+            new_dir, opposite = key_map[event.key]
+            if direction != opposite:
+                direction = new_dir
+                sound_manager.play_sound('move')
+        elif event.key == pygame.K_q:
+            return None, direction
+    
+    elif event.type == pygame.KEYDOWN and game_over:
+        return None, direction  # Esci su qualsiasi tasto
+    
+    return True, direction
+
+
+def check_collision(new_head, snake):
+    """Verifica collisioni con pareti o corpo."""
+    return (new_head[0] < 0 or new_head[0] >= config.GRID_WIDTH or
+            new_head[1] < 0 or new_head[1] >= config.GRID_HEIGHT or
+            new_head in snake)
+
+
+def handle_wrap(new_head):
+    """Gestisce attraversamento muri se SHIFT è premuto."""
+    mods = pygame.key.get_mods()
+    if mods & pygame.KMOD_SHIFT:
+        new_head[0] %= config.GRID_WIDTH
+        new_head[1] %= config.GRID_HEIGHT
+        return True
+    return False
+
+
+def render_game(snake, food, score, wrap_flash_frames):
+    """Renderizza il gioco."""
+    screen.fill(BG_COLOR)
+    
+    # Flash di wrap
+    if wrap_flash_frames > 0:
+        flash_alpha = int(80 * (wrap_flash_frames / WRAP_FLASH_DURATION))
+        flash_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        flash_surface.fill((*WRAP_FLASH_COLOR, flash_alpha))
+        screen.blit(flash_surface, (0, 0))
+    
+    # Cibo
+    pygame.draw.rect(screen, FOOD_COLOR, (food[0] * CELL_SIZE, food[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+    
+    # Snake con gradiente arcobaleno
+    for i, segment in enumerate(snake):
+        color = get_rainbow_color(i, len(snake))
+        pygame.draw.rect(screen, color, (segment[0] * CELL_SIZE, segment[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+    
+    # Score
+    font = pygame.font.Font(None, 36)
+    score_text = font.render(f'Score: {score}', True, TEXT_COLOR)
+    screen.blit(score_text, (10, 10))
+    
+    pygame.display.flip()
+
+
+def render_game_over(score):
+    """Renderizza schermata game over."""
+    screen.fill(BG_COLOR)
+    
+    font_title = pygame.font.Font(None, 48)
+    title = font_title.render('Game Over!', True, TEXT_COLOR)
+    screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20)))
+    
+    font_score = pygame.font.Font(None, 36)
+    score_text = font_score.render(f'Score finale: {score}', True, TEXT_COLOR)
+    screen.blit(score_text, score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
+    
+    font_small = pygame.font.Font(None, 24)
+    exit_text = font_small.render('Premi un tasto per uscire', True, TEXT_COLOR)
+    screen.blit(exit_text, exit_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60)))
+    
+    pygame.display.flip()
+
+
+def main():
+    """Loop principale di gioco."""
+    # Inizializzazione
+    snake = [[config.GRID_WIDTH // 2, config.GRID_HEIGHT // 2],
+             [config.GRID_WIDTH // 2 - 1, config.GRID_HEIGHT // 2],
+             [config.GRID_WIDTH // 2 - 2, config.GRID_HEIGHT // 2]]
+    direction = [1, 0]
+    food = generate_food(snake)
+    score = 0
+    running, game_over, wrap_flash_frames = True, False, 0
+    
+    sound_manager.play_music()
+    
+    while running:
+        # Gestione input
+        for event in pygame.event.get():
+            result, direction = handle_movement(event, direction, game_over)
+            if result is None:
+                running = False
+        
+        if not game_over:
+            # Calcola nuova posizione testa
+            new_head = [snake[0][0] + direction[0], snake[0][1] + direction[1]]
+            was_wrapped = False
+            
+            # Controllo wrap (attraversamento muri)
+            if check_collision(new_head, snake) and handle_wrap(new_head):
+                wrap_flash_frames = WRAP_FLASH_DURATION
+                sound_manager.play_sound('wrap')
+                was_wrapped = True
+            
+            # Controllo collisioni
+            if check_collision(new_head, snake) and not was_wrapped:
+                sound_manager.stop_music()
+                sound_manager.play_sound('crash')
+                game_over = True
+            else:
+                snake.insert(0, new_head)
+                
+                # Controllo se ha mangiato
+                if new_head == food:
+                    sound_manager.play_sound('eat')
+                    food = generate_food(snake)
+                    score += FOOD_SCORE
+                else:
+                    snake.pop()
+            
+            wrap_flash_frames = max(0, wrap_flash_frames - 1)
+        
+        # Rendering
+        render_game(snake, food, score, wrap_flash_frames)
+        
+        if game_over:
+            render_game_over(score)
+        
+        clock.tick(FPS)
+    
+    sound_manager.stop_music()
+    pygame.quit()
+    sys.exit()
+
+
+if __name__ == '__main__':
+    main()
 
 # Dimensioni celle in pixel
 CELL_SIZE = 20
