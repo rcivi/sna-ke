@@ -228,6 +228,65 @@ def generate_music_loop():
     return build_stereo_sound(samples)
 
 
+def generate_dynamic_music_loop(intensity=0.0):
+    """Genera musica epica che aumenta di intensità (0.0 a 1.0)."""
+    step_duration = 0.16 - (0.03 * intensity)  # Più veloce con intensità
+    
+    # Scale epiche che variano con l'intensità
+    if intensity < 0.33:
+        lead_notes = ["E4", "G4", "A4", "B4", "A4", "G4", "E4", "D4"] * 4
+        bass_notes = ["E2", "E2", "A2", "A2", "C3", "C3", "B2", "B2"] * 2
+    elif intensity < 0.66:
+        lead_notes = ["E4", "G4", "B4", "C5", "B4", "G4", "E4", "D4"] * 4
+        bass_notes = ["E2", "B2", "E3", "B2", "C3", "G2", "E3", "B2"] * 2
+    else:
+        lead_notes = ["E5", "G5", "B5", "C6", "B5", "G5", "E5", "D5"] * 4
+        bass_notes = ["E2", "E3", "E2", "E3", "C3", "C2", "C3", "C2"] * 2
+
+    total_samples = int(len(lead_notes) * step_duration * SAMPLE_RATE)
+    samples = []
+
+    for index in range(total_samples):
+        current_time = index / SAMPLE_RATE
+        lead_step = min(len(lead_notes) - 1, int(current_time / step_duration))
+        bass_step = min(len(bass_notes) - 1, int(current_time / (step_duration * 2)))
+        lead_progress = (current_time % step_duration) / step_duration
+        bass_progress = (current_time % (step_duration * 2)) / (step_duration * 2)
+
+        lead_freq = note_frequency(lead_notes[lead_step])
+        bass_freq = note_frequency(bass_notes[bass_step])
+
+        # Lead più aggressivo con intensità
+        lead_voice = 0.0
+        if lead_freq:
+            lead_env = (0.5 + 0.3 * intensity) * ((1 - lead_progress) ** (1.9 - 0.4 * intensity))
+            lead_voice = lead_env * mix_voices((
+                math.sin(2 * math.pi * lead_freq * current_time),
+                0.24 * math.sin(2 * math.pi * lead_freq * 2 * current_time),
+                0.12 * math.sin(2 * math.pi * lead_freq * 3 * current_time),
+                (0.16 + 0.2 * intensity) * math.sin(2 * math.pi * (lead_freq / 2) * current_time),
+            ))
+
+        # Bass più potente con intensità
+        bass_voice = 0.0
+        if bass_freq:
+            bass_env = (0.58 + 0.25 * intensity) * ((1 - bass_progress) ** (1.3 - 0.2 * intensity))
+            bass_voice = bass_env * mix_voices((
+                math.sin(2 * math.pi * bass_freq * current_time),
+                0.25 * math.sin(2 * math.pi * bass_freq * 0.5 * current_time),
+                (0.12 + 0.15 * intensity) * math.sin(2 * math.pi * bass_freq * 1.5 * current_time),
+            ))
+
+        # Più bounce e shimmer con intensità
+        bounce = (0.018 + 0.025 * intensity) if lead_progress < (0.08 - 0.03 * intensity) and lead_step % 2 == 0 else 0.0
+        shimmer = (0.01 + 0.015 * intensity) * math.sin(2 * math.pi * (4 + 3 * intensity) * current_time)
+        
+        voice = (0.54 * lead_voice) + (0.38 * bass_voice) + bounce + shimmer
+        samples.append(clamp_sample(MAX_SAMPLE_VALUE * MUSIC_VOLUME * voice))
+
+    return build_stereo_sound(samples)
+
+
 def load_sound(path, factory_func, volume, prefer_file=True):
     """Carica o genera un suono."""
     def fallback():
@@ -256,6 +315,10 @@ class SoundManager:
         self.sounds_dir = sounds_dir or os.path.dirname(__file__)
         self.channels = {}
         self.sounds = {}
+        self.score = 0
+        self.max_score = 50  # Score massimo per intensità massima
+        self.music_intensity = 0.0
+        self.last_music_intensity = -1.0
         self._init_sounds()
         self._init_channels()
     
@@ -299,8 +362,23 @@ class SoundManager:
     
     def play_music(self):
         """Avvia la musica di sfondo."""
-        if self.channels.get('music') and not self.channels['music'].get_busy():
-            self.channels['music'].play(self.sounds['music'], loops=-1)
+        if self.channels.get('music'):
+            self.sounds['music'] = generate_dynamic_music_loop(0.0)
+            if not self.channels['music'].get_busy():
+                self.channels['music'].play(self.sounds['music'], loops=-1)
+    
+    def update_score(self, score):
+        """Aggiorna lo score e l'intensità della musica."""
+        self.score = score
+        # Mappa score a intensità (0.0 a 1.0)
+        self.music_intensity = min(1.0, score / self.max_score)
+        
+        # Rigenera musica dinamica se intensità cambia significativamente
+        if abs(self.music_intensity - self.last_music_intensity) > 0.1:
+            self.last_music_intensity = self.music_intensity
+            if self.channels.get('music') and self.enabled:
+                self.sounds['music'] = generate_dynamic_music_loop(self.music_intensity)
+                self.channels['music'].play(self.sounds['music'], loops=-1)
     
     def stop_music(self):
         """Ferma la musica con fade out."""

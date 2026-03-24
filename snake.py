@@ -41,6 +41,38 @@ clock = pygame.time.Clock()
 # === AUDIO ===
 sound_manager = SoundManager()
 
+# === FOOD IMAGE ===
+FOOD_IMAGE = None
+FOOD_IMAGE_PATH = "ecco.png"
+
+def init_food_image():
+    """Carica l'immagine del cibo se disponibile."""
+    global FOOD_IMAGE
+    try:
+        if __import__('os').path.exists(FOOD_IMAGE_PATH):
+            raw_image = pygame.image.load(FOOD_IMAGE_PATH)
+            FOOD_IMAGE = pygame.transform.scale(raw_image, (50, 50))
+    except:
+        FOOD_IMAGE = None
+
+
+def render_food(food):
+    """Renderizza il cibo (PNG o rettangolo di colore)."""
+    x = food[0] * CELL_SIZE + (CELL_SIZE - 50) // 2
+    y = food[1] * CELL_SIZE + (CELL_SIZE - 50) // 2
+    if FOOD_IMAGE:
+        screen.blit(FOOD_IMAGE, (x, y))
+    else:
+        pygame.draw.rect(screen, FOOD_COLOR, (food[0] * CELL_SIZE, food[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+
+
+def get_font(name="helvetica neue", size=36, bold=False):
+    """Ottiene font con fallback per Helvetica Neue."""
+    try:
+        return pygame.font.SysFont(name, size, bold=bold)
+    except:
+        return pygame.font.Font(None, size)
+
 
 def get_rainbow_color(position, total_length):
     """Calcola colore arcobaleno basato sulla posizione nel corpo."""
@@ -124,7 +156,7 @@ def render_game(snake, food, score, wrap_flash_frames):
         screen.blit(flash_surface, (0, 0))
     
     # Cibo
-    pygame.draw.rect(screen, FOOD_COLOR, (food[0] * CELL_SIZE, food[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE))
+    render_food(food)
     
     # Snake con gradiente arcobaleno
     for i, segment in enumerate(snake):
@@ -132,7 +164,7 @@ def render_game(snake, food, score, wrap_flash_frames):
         pygame.draw.rect(screen, color, (segment[0] * CELL_SIZE, segment[1] * CELL_SIZE, CELL_SIZE, CELL_SIZE))
     
     # Score
-    font = pygame.font.Font(None, 36)
+    font = get_font(size=36, bold=True)
     score_text = font.render(f'Score: {score}', True, TEXT_COLOR)
     screen.blit(score_text, (10, 10))
     
@@ -143,15 +175,15 @@ def render_game_over(score):
     """Renderizza schermata game over."""
     screen.fill(BG_COLOR)
     
-    font_title = pygame.font.Font(None, 48)
+    font_title = get_font(size=48, bold=True)
     title = font_title.render('Game Over!', True, TEXT_COLOR)
     screen.blit(title, title.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20)))
     
-    font_score = pygame.font.Font(None, 36)
+    font_score = get_font(size=36, bold=True)
     score_text = font_score.render(f'Score finale: {score}', True, TEXT_COLOR)
     screen.blit(score_text, score_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20)))
     
-    font_small = pygame.font.Font(None, 24)
+    font_small = get_font(size=24)
     exit_text = font_small.render('Premi un tasto per uscire', True, TEXT_COLOR)
     screen.blit(exit_text, exit_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60)))
     
@@ -170,6 +202,7 @@ def main():
     running, game_over, wrap_flash_frames = True, False, 0
     
     sound_manager.play_music()
+    init_food_image()
     
     while running:
         # Gestione input
@@ -202,6 +235,7 @@ def main():
                     sound_manager.play_sound('eat')
                     food = generate_food(snake)
                     score += FOOD_SCORE
+                    sound_manager.update_score(score)
                 else:
                     snake.pop()
             
@@ -599,6 +633,7 @@ def main():
     game_over = False
     wrap_flash_frames = 0
     play_music()
+    init_food_image()
 
     while running:
         for event in pygame.event.get():
@@ -653,6 +688,7 @@ def main():
                     play_eat_sound()
                     food = generate_food(snake)
                     score += 10
+                    sound_manager.update_score(score)
                 else:
                     snake.pop()
 
@@ -667,9 +703,7 @@ def main():
             wrap_flash_frames -= 1
 
         # Disegna cibo
-        pygame.draw.rect(screen, FOOD_COLOR,
-                        (food[0] * CELL_SIZE, food[1] * CELL_SIZE,
-                         CELL_SIZE, CELL_SIZE))
+        render_food(food)
 
         # Disegna serpente
         for i, segment in enumerate(snake):
@@ -679,23 +713,23 @@ def main():
                             CELL_SIZE, CELL_SIZE))
 
         # Disegna score
-        font_score = pygame.font.Font(None, 36)
+        font_score = get_font(size=36, bold=True)
         score_text = font_score.render(f'Score: {score}', True, TEXT_COLOR)
         screen.blit(score_text, (10, 10))
 
         # Messaggio game over
         if game_over:
-            font = pygame.font.Font(None, 48)
+            font = get_font(size=48, bold=True)
             text = font.render('Game Over!', True, TEXT_COLOR)
             text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 20))
             screen.blit(text, text_rect)
 
-            font_score_final = pygame.font.Font(None, 36)
+            font_score_final = get_font(size=36, bold=True)
             score_final_text = font_score_final.render(f'Score finale: {score}', True, TEXT_COLOR)
             score_final_rect = score_final_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 20))
             screen.blit(score_final_text, score_final_rect)
 
-            font_small = pygame.font.Font(None, 24)
+            font_small = get_font(size=24)
             text_small = font_small.render('Premi un tasto per uscire', True, TEXT_COLOR)
             text_rect_small = text_small.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 60))
             screen.blit(text_small, text_rect_small)
