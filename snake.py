@@ -38,49 +38,69 @@ pygame.display.set_caption('Snake Game')
 # Clock per controllare FPS
 clock = pygame.time.Clock()
 
-# Genera suoni procedurali usando numpy
-def generate_eat_sound():
-    import numpy as np
-    sample_rate = 22050
-    duration = 0.1
-    frequency = 800
-    t = np.linspace(0, duration, int(sample_rate * duration))
-    wave = np.sin(2 * np.pi * frequency * t) * 0.3
-    wave = (wave * 32767).astype(np.int16)
-    stereo_wave = np.column_stack((wave, wave))
-    return pygame.sndarray.make_sound(stereo_wave)
+# Carica suoni da file, con fallback a suoni generati
+import os
+import numpy as np
 
-def generate_crash_sound():
-    import numpy as np
-    sample_rate = 22050
-    duration = 0.3
-    t = np.linspace(0, duration, int(sample_rate * duration))
-    wave = np.random.uniform(-0.5, 0.5, len(t)) * np.exp(-10 * t)
-    wave = (wave * 32767).astype(np.int16)
-    stereo_wave = np.column_stack((wave, wave))
-    return pygame.sndarray.make_sound(stereo_wave)
+def load_or_generate_sounds():
+    sounds_dir = os.path.join(os.path.dirname(__file__), 'sounds')
 
-def generate_move_sound():
-    import numpy as np
-    sample_rate = 22050
-    duration = 0.05
-    frequency = 200
-    t = np.linspace(0, duration, int(sample_rate * duration))
-    wave = np.sin(2 * np.pi * frequency * t) * 0.1 * (1 - t / duration)
-    wave = (wave * 32767).astype(np.int16)
-    stereo_wave = np.column_stack((wave, wave))
-    return pygame.sndarray.make_sound(stereo_wave)
+    # Prova a caricare da file
+    eat_sound = None
+    crash_sound = None
+    move_sound = None
 
-# Crea suoni
-try:
-    eat_sound = generate_eat_sound()
-    crash_sound = generate_crash_sound()
-    move_sound = generate_move_sound()
-except Exception as e:
-    print(f"Errore nella generazione dei suoni: {e}")
-    # Crea suoni vuoti come fallback
-    empty = pygame.mixer.Sound(buffer=bytearray(100))
-    eat_sound = crash_sound = move_sound = empty
+    if os.path.exists(sounds_dir):
+        try:
+            eat_path = os.path.join(sounds_dir, 'eat.wav')
+            crash_path = os.path.join(sounds_dir, 'crash.wav')
+            move_path = os.path.join(sounds_dir, 'move.wav')
+
+            if os.path.exists(eat_path):
+                eat_sound = pygame.mixer.Sound(eat_path)
+            if os.path.exists(crash_path):
+                crash_sound = pygame.mixer.Sound(crash_path)
+            if os.path.exists(move_path):
+                move_sound = pygame.mixer.Sound(move_path)
+        except Exception as e:
+            print(f"Errore nel caricamento dei suoni: {e}")
+
+    # Genera suoni mancanti
+    if eat_sound is None:
+        sample_rate = 22050
+        duration = 0.15
+        t = np.linspace(0, duration, int(sample_rate * duration))
+        # Suono tipo "bleep" per mangiata
+        freq = 800 + 400 * np.sin(2 * np.pi * 10 * t)
+        wave = np.sin(2 * np.pi * freq * t) * 0.3 * (1 - t / duration)
+        wave = (wave * 32767).astype(np.int16)
+        stereo_wave = np.column_stack((wave, wave))
+        eat_sound = pygame.sndarray.make_sound(stereo_wave)
+
+    if crash_sound is None:
+        sample_rate = 22050
+        duration = 0.4
+        t = np.linspace(0, duration, int(sample_rate * duration))
+        # Rumore con frequenze basse per crash
+        wave = np.random.uniform(-0.6, 0.6, len(t)) * np.exp(-8 * t)
+        wave = (wave * 32767).astype(np.int16)
+        stereo_wave = np.column_stack((wave, wave))
+        crash_sound = pygame.sndarray.make_sound(stereo_wave)
+
+    if move_sound is None:
+        sample_rate = 22050
+        duration = 0.03
+        frequency = 150
+        t = np.linspace(0, duration, int(sample_rate * duration))
+        wave = np.sin(2 * np.pi * frequency * t) * 0.15 * (1 - t / duration)
+        wave = (wave * 32767).astype(np.int16)
+        stereo_wave = np.column_stack((wave, wave))
+        move_sound = pygame.sndarray.make_sound(stereo_wave)
+
+    return eat_sound, crash_sound, move_sound
+
+# Carica suoni
+eat_sound, crash_sound, move_sound = load_or_generate_sounds()
 
 def generate_food(snake):
     while True:
